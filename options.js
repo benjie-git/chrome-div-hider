@@ -46,14 +46,18 @@ function isValidHost(host) {
 
 function normalizeRule(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
+  // Rules from the previous version had separate attr/valueRegex fields. They
+  // are not auto-converted; disable them so a tag-only selector cannot
+  // accidentally match more than the user intended.
+  const legacy = Boolean(
+    String(source.attr ?? '').trim() || String(source.valueRegex ?? '').trim(),
+  );
   return {
     id: typeof source.id === 'string' && source.id ? source.id : uid(),
-    enabled: source.enabled !== false,
+    enabled: legacy ? false : source.enabled !== false,
     host: String(source.host ?? ''),
     urlRegex: String(source.urlRegex ?? ''),
     selector: String(source.selector ?? 'div'),
-    attr: String(source.attr ?? ''),
-    valueRegex: String(source.valueRegex ?? ''),
     action: source.action === 'hide' ? 'hide' : 'remove',
     ignoreCase: Boolean(source.ignoreCase),
   };
@@ -102,16 +106,6 @@ function fieldError(rule, key) {
       }
       return '';
     }
-    case 'attr': {
-      const attr = String(rule.attr ?? '').trim();
-      if (!attr) return 'Attribute key is required.';
-      if (!/^[^\s"'<>/=]+$/.test(attr)) {
-        return 'Attribute names cannot contain quotes, spaces, or < > / =.';
-      }
-      return '';
-    }
-    case 'valueRegex':
-      return regexError(rule.valueRegex, rule.ignoreCase);
     default:
       return '';
   }
@@ -227,17 +221,14 @@ function updateCardChrome(card, rule) {
   card.querySelector('[data-role="pill"]').textContent = host || 'no host';
 
   const selector = String(rule.selector ?? '').trim() || '?';
-  const attr = String(rule.attr ?? '').trim();
-  let summary = selector + (attr ? `[${attr}]` : '');
-  if (rule.valueRegex) summary += ` ~ /${rule.valueRegex}/`;
-  card.querySelector('[data-role="id"]').textContent = summary;
+  card.querySelector('[data-role="id"]').textContent = selector;
 }
 
 function validateCard(card, rule) {
   if (card.dataset.validated !== '1') return true;
 
   let valid = true;
-  for (const key of ['host', 'urlRegex', 'selector', 'attr', 'valueRegex']) {
+  for (const key of ['host', 'urlRegex', 'selector']) {
     const message = fieldError(rule, key);
     const err = card.querySelector(`[data-err="${key}"]`);
     const input = card.querySelector(`[data-field="${key}"]`);
@@ -310,7 +301,6 @@ function addRule(partial = {}) {
     id: uid(),
     enabled: true,
     selector: 'div',
-    attr: '',
     ...partial,
   });
   rules.push(rule);
@@ -442,9 +432,7 @@ els.add.addEventListener('click', () => addRule());
 els.addExample.addEventListener('click', () => {
   addRule({
     host: 'mail.yahoo.com',
-    selector: 'section',
-    attr: 'data-test-id',
-    valueRegex: 'novation.*',
+    selector: 'section[data-test-id^="novation"]',
     action: 'remove',
   });
 });
@@ -483,9 +471,14 @@ chrome.permissions.onRemoved.addListener(() => {
 });
 
 async function init() {
+  let hasLegacy = false;
   try {
     const stored = await chrome.storage.local.get(STORAGE_KEY);
-    rules = Array.isArray(stored[STORAGE_KEY]) ? normalizeRuleList(stored[STORAGE_KEY]) : [];
+    const rawRules = Array.isArray(stored[STORAGE_KEY]) ? stored[STORAGE_KEY] : [];
+    hasLegacy = rawRules.some(
+      (rule) => rule && (String(rule.attr ?? '').trim() || String(rule.valueRegex ?? '').trim()),
+    );
+    rules = normalizeRuleList(rawRules);
   } catch (error) {
     rules = [];
     showToast(`Could not load rules: ${error.message}`, 'error');
@@ -493,6 +486,13 @@ async function init() {
 
   render();
   setDirty(false);
+
+  if (hasLegacy) {
+    showToast(
+      'Rules saved by the old version are disabled. Put the attribute condition in the CSS selector, then re-enable.',
+      'warn',
+    );
+  }
 }
 
 init();

@@ -18,6 +18,7 @@ const els = {
 let tab = null;
 let currentHost = '';
 let hostRules = 0;
+let legacyRules = 0;
 let needsAccess = false;
 
 function isValidHost(host) {
@@ -72,7 +73,9 @@ async function ping() {
     els.grant.hidden = !needsAccess;
     els.apply.hidden = hostRules === 0 || needsAccess;
     setState('bad', 'Content script is not running on this tab');
-    if (needsAccess) {
+    if (legacyRules > 0) {
+      setHint('A saved rule uses the old attribute/value fields. Open Edit rules and put the condition in the CSS selector.', 'warn');
+    } else if (needsAccess) {
       setHint('This host has rules, but Div Hider needs site access. Grant it to run on future page loads.', 'warn');
     } else if (hostRules === 0) {
       setHint('No enabled rule targets this host. Add one in the options.', 'warn');
@@ -90,7 +93,9 @@ async function ping() {
   els.apply.hidden = true;
   setState(state.activeRules > 0 ? 'ok' : 'idle', state.activeRules > 0 ? 'Rules active' : 'Running, but no rule matches this URL');
 
-  if (state.hostRules > 0 && state.activeRules === 0) {
+  if (state.legacyRules > 0) {
+    setHint('A saved rule uses the old attribute/value fields. Open Edit rules and put the condition in the CSS selector.', 'warn');
+  } else if (state.hostRules > 0 && state.activeRules === 0) {
     setHint('A rule exists for this host, but its URL regex does not match this page.', 'warn');
   } else if (state.activeRules === 0) {
     setHint('No enabled rule matches this URL. Nothing will be changed here.');
@@ -152,6 +157,14 @@ async function init() {
   hostRules = rules.filter(
     (rule) => rule && typeof rule === 'object' && rule.enabled !== false && hostMatches(rule.host, hostname),
   ).length;
+  legacyRules = rules.filter(
+    (rule) =>
+      rule &&
+      typeof rule === 'object' &&
+      rule.enabled !== false &&
+      hostMatches(rule.host, hostname) &&
+      (String(rule.attr ?? '').trim() || String(rule.valueRegex ?? '').trim()),
+  ).length;
   setValue(els.saved, hostRules);
 
   const registration = await inspect();
@@ -161,7 +174,9 @@ async function init() {
 
   const running = await ping();
 
-  if (running && !registration.registered && hostRules > 0) {
+  if (legacyRules > 0) {
+    setHint('A saved rule uses the old attribute/value fields. Open Edit rules and put the condition in the CSS selector.', 'warn');
+  } else if (running && !registration.registered && hostRules > 0) {
     setHint(
       'Running now, but this host is not registered for future page loads. Click Grant site access to keep it running after reloads.',
       'warn',

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Div Hider",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Remove or hide elements by exact attribute name and regex value, scoped to the sites you choose.",
   "minimum_chrome_version": "119",
   "permissions": ["storage", "scripting", "activeTab", "declarativeContent"],

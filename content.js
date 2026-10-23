@@ -6,10 +6,10 @@
  * or URL, otherwise it watches for matching elements and removes/hides them.
  *
  * Matching model:
- *   - host:  exact hostname or "*.example.com" (decides where the script loads)
- *   - URL:   optional JavaScript regex tested against the full href
- *   - key:   exact attribute name
- *   - value: optional JavaScript regex tested against the attribute value
+ *   - host:     exact hostname or "*.example.com" (decides where the script loads)
+ *   - URL:      optional JavaScript regex tested against the full href
+ *   - selector: full CSS selector, evaluated by the browser. Supports
+ *               descendants, attribute selectors, :has(), etc.
  */
 (() => {
   'use strict';
@@ -24,16 +24,16 @@
 
   /** Rules from storage. */
   let allRules = [];
-  /** Rules whose host matches this page (includes URL-regex misses). */
+  /** Rules whose host matches this page (includes URL-regex and legacy misses). */
   let hostRules = [];
   /** Fully compiled rules active for the current URL. */
   let active = [];
+  /** Rules for this host that still carry the old attr/valueRegex fields. */
+  let legacyRules = 0;
   /** href the current `active` list was compiled against. */
   let currentHref = '';
   /** MutationObserver, watching the document for new/changed elements. */
   let observer = null;
-  /** Signature of the attribute filter currently installed on the observer. */
-  let observerAttrs = null;
 
   function hostMatches(pattern, hostname) {
     const normalized = String(pattern || '').trim().toLowerCase().replace(/\.$/, '');
@@ -59,27 +59,35 @@
     );
 
     const next = [];
+    legacyRules = 0;
     for (const rule of hostRules) {
-      const attr = String(rule.attr || '').trim();
-      if (!attr) continue;
+      // The previous version stored a separate attribute key and value regex.
+      // This version is selector-only; ignore those rules rather than letting
+      // them degrade into a broad tag-only match. The options page disables
+      // them so they can be updated deliberately.
+      if (rule.attr || rule.valueRegex) {
+        legacyRules += 1;
+        continue;
+      }
+
+      const selector = String(rule.selector || '').trim();
+      if (!selector) continue;
 
       const flags = rule.ignoreCase ? 'i' : '';
       let urlRegex = null;
-      let valueRegex;
       try {
-        valueRegex = new RegExp(String(rule.valueRegex ?? ''), flags);
         if (rule.urlRegex) urlRegex = new RegExp(String(rule.urlRegex), flags);
+        // Reject invalid selectors saved by another client. A fragment parses
+        // the selector without scanning the page's DOM.
+        document.createDocumentFragment().querySelector(selector);
       } catch {
-        continue; // Invalid regex saved by another client: ignore this rule.
+        continue;
       }
 
       if (urlRegex && !urlRegex.test(href)) continue;
 
-      const selector = String(rule.selector || '*').trim() || '*';
       next.push({
         selector,
-        attr,
-        valueRegex,
         action: rule.action === 'hide' ? 'hide' : 'remove',
       });
     }
@@ -88,13 +96,16 @@
     currentHref = href;
   }
 
-  function elementMatches(element, rule) {
-    const value = element.getAttribute(rule.attr);
-    return value !== null && rule.valueRegex.test(value);
+  function matchesRule(element, rule) {
+    try {
+      return element.matches(rule.selector);
+    } catch {
+      return false;
+    }
   }
 
   function applyRule(element, rule) {
-    console.debug('[Div Hider]', rule.action, rule.selector, `[${rule.attr}]`);
+    console.debug('[Div Hider]', rule.action, rule.selector);
     if (rule.action === 'hide') {
       element.style.setProperty('display', 'none', 'important');
       element.setAttribute(HIDDEN_ATTR, '');
@@ -110,7 +121,7 @@
     if (element.hasAttribute(HIDDEN_ATTR)) return;
 
     for (const rule of active) {
-      if (elementMatches(element, rule)) {
+      if (matchesRule(element, rule)) {
         applyRule(element, rule);
         return;
       }
@@ -118,32 +129,36 @@
   }
 
   /**
-   * Scan a newly added subtree (or the document root) once for all active
-   * rules. Candidate nodes are collected by CSS selector first, then tested
-   * against the attribute rules.
+   * Scan one root (an element or the document) with the browser's native CSS
+   * selector engine. For an element root, the root itself is checked too.
    */
-  function scan(root) {
+  function scanRoot(root) {
     if (!root || active.length === 0) return;
-    if (root.nodeType !== 1 && root.nodeType !== 9) return;
 
     const candidates = new Set();
-    const selectors = new Set(active.map((rule) => rule.selector));
-
-    for (const selector of selectors) {
-      if (selector === '*') {
-        if (root.nodeType === 1) candidates.add(root);
-        for (const element of root.querySelectorAll('*')) candidates.add(element);
-      } else {
-        try {
-          if (root.nodeType === 1 && root.matches(selector)) candidates.add(root);
-          for (const element of root.querySelectorAll(selector)) candidates.add(element);
-        } catch {
-          // Invalid selector stored by another client: skip it.
+    for (const rule of active) {
+      try {
+        if (root.nodeType === 1 && root.matches(rule.selector)) {
+          candidates.add(root);
         }
+        for (const element of root.querySelectorAll(rule.selector)) {
+          candidates.add(element);
+        }
+      } catch {
+        // Invalid selector stored by another client: skip it.
       }
     }
 
     for (const element of candidates) checkElement(element);
+  }
+
+  /** Check the element's ancestors; useful for selectors containing :has(). */
+  function checkAncestors(element) {
+    let node = element && element.parentElement;
+    while (node) {
+      checkElement(node);
+      node = node.parentElement;
+    }
   }
 
   function handleMutations(records) {
@@ -153,50 +168,66 @@
     if (location.href !== currentHref) {
       buildActive();
       installObserver();
-      scan(document.documentElement || document);
+      scanRoot(document);
       if (active.length === 0) return;
     }
 
     if (active.length === 0) return;
 
+    // CSS selectors can depend on an element's own attributes, its ancestors
+    // (`:has`), its descendants (`div.fancy a`), and its siblings (`+`, `~`,
+    // :nth-child). Rescan the mutation's parent subtree to cover all of those,
+    // then explicitly check ancestors for :has() matches above that subtree.
+    const roots = new Set();
+    const checkNodes = new Set();
+
     for (const record of records) {
       if (record.type === 'attributes') {
-        checkElement(record.target);
-      } else {
-        for (const node of record.addedNodes) {
-          if (node.nodeType === 1) scan(node);
-        }
+        const parent = record.target.parentElement;
+        roots.add(parent || record.target);
+        checkNodes.add(record.target);
+        continue;
       }
+
+      // childList: the target is the parent whose children changed.
+      const parent = record.target.nodeType === 1 ? record.target : document.documentElement;
+      if (parent) roots.add(parent);
+      if (record.target.nodeType === 1) checkNodes.add(record.target);
+      for (const node of record.addedNodes) {
+        if (node.nodeType === 1) checkNodes.add(node);
+      }
+    }
+
+    for (const root of roots) scanRoot(root);
+    for (const node of checkNodes) {
+      checkElement(node);
+      checkAncestors(node);
     }
   }
 
   /**
-   * (Re)install the observer. The attribute filter is the union of every
-   * active rule's attribute name, so unrelated attribute churn on the page
-   * does not wake the callback (Chrome filters natively).
+   * Watch the whole document. Arbitrary CSS selectors can depend on any
+   * attribute or on structural changes, so there is no useful attributeFilter.
+   * Scanning is limited to the mutated parent subtree plus ancestors, not the
+   * whole document, except when the mutation itself is near the root.
+   *
+   * When no rule is active for this URL, only structural changes are needed to
+   * notice an in-page URL change; skipping attribute watching keeps that case
+   * as light as possible.
    */
   function installObserver() {
-    const attrs = [...new Set(active.map((rule) => rule.attr))].sort();
-    const signature = attrs.join('\u0000');
-
-    if (observer && observerAttrs === signature) return;
-
-    if (observer) observer.disconnect();
-    observerAttrs = signature;
-    observer = new MutationObserver(handleMutations);
-
-    const target = document.documentElement || document;
-    observer.observe(target, {
+    if (!observer) observer = new MutationObserver(handleMutations);
+    observer.disconnect();
+    observer.observe(document, {
       childList: true,
       subtree: true,
-      attributes: attrs.length > 0,
-      attributeFilter: attrs.length > 0 ? attrs : undefined,
+      attributes: active.length > 0,
     });
   }
 
   /** Number of elements currently matching any active rule and not yet hidden. */
   function countMatches() {
-    let count = 0;
+    const elements = new Set();
     for (const rule of active) {
       let nodes;
       try {
@@ -205,12 +236,12 @@
         continue;
       }
       for (const element of nodes) {
-        if (element.isConnected && !element.hasAttribute(HIDDEN_ATTR) && elementMatches(element, rule)) {
-          count += 1;
+        if (element.isConnected && !element.hasAttribute(HIDDEN_ATTR)) {
+          elements.add(element);
         }
       }
     }
-    return count;
+    return elements.size;
   }
 
   function snapshot() {
@@ -219,6 +250,7 @@
       href: location.href,
       hostRules: hostRules.length,
       activeRules: active.length,
+      legacyRules,
       matches: countMatches(),
       observing: Boolean(observer),
     };
@@ -240,27 +272,12 @@
       if (observer) {
         observer.disconnect();
         observer = null;
-        observerAttrs = null;
       }
       return;
     }
 
-    if (!document.documentElement) {
-      // Extremely early document: wait for the root element to appear.
-      document.addEventListener(
-        'readystatechange',
-        () => {
-          if (!document.documentElement) return;
-          installObserver();
-          scan(document.documentElement);
-        },
-        { once: true },
-      );
-      return;
-    }
-
     installObserver();
-    scan(document.documentElement);
+    scanRoot(document);
   }
 
   window.addEventListener('popstate', refresh);

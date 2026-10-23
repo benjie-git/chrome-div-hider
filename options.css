@@ -471,6 +471,11 @@ textarea::placeholder {
 }
 
 .rule-id {
+  min-width: 0;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--muted);

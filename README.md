@@ -1,12 +1,13 @@
 # Div Hider
 
-A small Chrome extension for deleting (or hiding) elements on specific sites by
-matching an **exact attribute name** against a **regex value**.
+A small Chrome extension for deleting (or hiding) elements on specific sites
+using a **CSS selector**. Selectors are evaluated by Chrome's built-in engine,
+including `:has()` and attribute selectors.
 
-Example rule: on `mail.yahoo.com`, find any `<section data-test-id="...">`
-whose `data-test-id` value matches `novation.*` and remove it from the DOM.
-(Yahoo's current markup uses a `<section>`; the selector field accepts any CSS
-selector.)
+Example rule: on `mail.yahoo.com`, remove any `<section>` whose
+`data-test-id` starts with `novation`:
+`section[data-test-id^="novation"]`. To match a parent by a child, use
+something like `li:has(> a[custom_att="fancy"])`.
 
 ## Install
 
@@ -30,14 +31,14 @@ needed** with a **Grant** button.
 | **Enabled** | Turn the rule off without deleting it. Disabled rules are not registered, so their hosts get no injected script. |
 | **Host** | Exact hostname (`mail.yahoo.com`) or wildcard subdomains (`*.yahoo.com`). This is the fast pre-filter and decides where the content script is loaded. |
 | **URL regex** | Optional JavaScript regex tested against the full URL (`location.href`). Use it when you only want part of a host, e.g. `^https://mail\.yahoo\.com/`. |
-| **Element selector** | CSS selector used to find candidates, e.g. `div`, `.message`, `[role="main"] div`. Defaults to `*`. |
-| **Attribute key** | Exact attribute name. Case is handled by the DOM, so write it as it appears in HTML, e.g. `data-test-id`. |
-| **Attribute value regex** | JavaScript regex tested against the attribute value. Empty means "any value". |
+| **CSS selector** | Full CSS selector, e.g. `div`, `.message`, `[role="main"] div`, or `li:has(> a[custom_att="fancy"])`. Defaults to `div`. |
 | **Action** | `Remove from DOM` deletes the element. `Hide` sets `display: none !important`. |
-| **Ignore case** | Adds the `i` flag to both regexes. |
+| **Ignore case** | Adds the `i` flag to the URL regex. |
 
-Regexes are partial matches, like `RegExp.test()`. Use `^` and `$` if you need
-the whole value.
+The selector is passed to `querySelectorAll()` / `matches()` as-is. Attribute
+conditions are CSS, not regex: use `[attr="value"]`, `[attr^="prefix"]`,
+`[attr*="substring"]`, `[attr$="suffix"]`, `[attr~="word"]`, and so on.
+`:has()` is supported by Chrome 105+.
 
 ### Example
 
@@ -45,9 +46,7 @@ the whole value.
 [
   {
     "host": "mail.yahoo.com",
-    "selector": "section",
-    "attr": "data-test-id",
-    "valueRegex": "novation.*",
+    "selector": "section[data-test-id^=\"novation\"]",
     "action": "remove"
   }
 ]
@@ -58,7 +57,7 @@ Paste that into **Import / export → Replace rules from JSON**, then save.
 On a site with dynamic content (Yahoo Mail, most SPAs), the content script keeps
 watching the DOM and removes elements that appear or change later. Already
 removed elements stay removed; hidden elements are not automatically unhidden if
-their attribute later stops matching.
+the selector later stops matching.
 
 ## Why it does not slow down other sites
 
@@ -70,12 +69,15 @@ their attribute later stops matching.
 - The toolbar action is enabled declaratively only on rule hosts. Chrome grays
   it out elsewhere without waking the background worker on every navigation.
 - Within a registered host, the content script reads the rules and checks the
-  optional URL regex once. If nothing matches the URL, it does no element
-  processing; a lightweight child-list observer stays only to notice in-page
-  URL changes (SPA navigation).
-- When a rule is active, it uses one `MutationObserver` with
-  `attributeFilter` set to the exact keys you care about, plus selector-scoped
-  scanning of added subtrees. It never polls.
+  optional URL regex once. If no rule matches the URL, it does no element
+  processing; a lightweight observer stays only to notice in-page URL changes
+  (SPA navigation).
+- When a rule is active, matching uses the browser's native
+  `querySelectorAll()` and `matches()` — there is no JavaScript selector
+  parser. While a rule is active, the observer watches structure and attributes
+  (any CSS selector can depend on them) and rescans the mutated parent subtree
+  plus ancestors, rather than the whole document on every change. When no rule
+  matches the URL, it only watches structure. It never polls.
 - Wildcard hosts (`*.example.com`) and URL regexes still only load the script on
   the matching host family; the regex itself is cheap.
 
@@ -116,14 +118,20 @@ Extensions menu; it remains available there on every site.
 
 ## Notes and limitations
 
-- Only attributes are matched, not text content.
+- CSS selectors cannot match text content or arbitrary regexes. Use the CSS
+  attribute operators above for attribute-value matching.
+- Rules saved by older versions with separate `attr` / `valueRegex` fields are
+  not migrated. The content script skips them and the editor shows them
+  disabled; put the attribute condition into the CSS selector and re-enable.
 - Open shadow DOM is not traversed.
 - Cross-origin iframes are only changed if they have their own matching host
   rule. Same-origin/about:blank frames are covered by `allFrames`.
 - If two rules match the same element, the first one in the list wins.
 - Invalid regexes/selectors are rejected by the options page. If bad rules are
   imported some other way, the content script ignores them.
-- The `hide` action is intentionally one-way to keep the observer cheap.
+- State-only selectors such as `:hover` or `:focus` do not trigger a rescan,
+  because no DOM mutation occurs. Attribute and structural selectors do.
+- The `hide` action is intentionally one-way to keep rescans cheap.
 - Elements that the page removes and re-adds are handled each time they appear.
 - If the popup says elements match but are still present, they may be inside
   shadow DOM, a cross-origin iframe, or a page that keeps recreating them.
@@ -136,5 +144,5 @@ Extensions menu; it remains available there on every site.
 | `background.js` | Syncs rules into dynamic content-script registrations per host, enables the action only on rule hosts, and applies rules to open tabs. |
 | `content.js` | Matches and removes/hides elements; watches the DOM on matching hosts. |
 | `popup.html` / `popup.css` / `popup.js` | Status for the current tab: registration, injection, active rules, live match count, and a Grant access action. |
-| `options.html` / `options.css` / `options.js` | Rule editor, validation, import/export. |
+| `options.html` / `options.css` / `options.js` | Rule editor, CSS selector validation, import/export. |
 | `icons/` | Generated PNG icons. |

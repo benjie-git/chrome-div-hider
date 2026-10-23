@@ -14,8 +14,9 @@
           <div>
             <h1>Div Hider</h1>
             <p>
-              Remove or hide elements by <strong>exact attribute name</strong> and
-              <strong>regex value</strong>, on the sites you choose.
+              Remove or hide elements by <strong>CSS selector</strong>, on the sites
+              you choose. Selectors can match descendants and child attributes with
+              <code>:has()</code>.
             </p>
           </div>
         </div>
@@ -35,11 +36,12 @@
       <section id="empty" class="empty" hidden>
         <h2>No rules yet</h2>
         <p>
-          A rule needs a host, an exact attribute key, and a regex for the
-          attribute value. For example: on <code>mail.yahoo.com</code>, remove any
-          element matching <code>section</code> whose <code>data-test-id</code>
-          matches <code>novation.*</code>. Yahoo's current markup uses a
-          <code>section</code>; change the selector if yours differs.
+          A rule needs a host and a CSS selector. For example, remove any
+          <code>section</code> on <code>mail.yahoo.com</code> whose
+          <code>data-test-id</code> starts with <code>novation</code>:
+          <code>section[data-test-id^="novation"]</code>. Use
+          <code>:has()</code> to match a parent by its child, e.g.
+          <code>li:has(> a[custom_att="fancy"])</code>.
         </p>
         <button type="button" class="btn primary" id="add-example">Add that example rule</button>
       </section>
@@ -50,7 +52,7 @@
           Rules are stored locally in Chrome. Copy this JSON to back them up, or
           paste a JSON array and replace the current rules.
         </p>
-        <textarea id="io-text" rows="8" spellcheck="false" placeholder='[{"host":"mail.yahoo.com","selector":"section","attr":"data-test-id","valueRegex":"novation.*"}]'></textarea>
+        <textarea id="io-text" rows="8" spellcheck="false" placeholder='[{"host":"mail.yahoo.com","selector":"section[data-test-id^=\"novation\"]"}]'></textarea>
         <div class="io-actions">
           <button type="button" class="btn ghost" id="export">Show JSON</button>
           <button type="button" class="btn ghost" id="import">Replace rules from JSON</button>
@@ -62,8 +64,10 @@
           Div Hider only injects its content script into hosts that have an
           enabled rule and site access. Chrome asks for access to each host the
           first time you save a rule for it; the toolbar icon stays disabled on
-          other sites. Rules with URL regexes are also skipped immediately when
-          the URL does not match. Open shadow DOM is not traversed.
+          other sites. Selectors are evaluated with the browser's built-in
+          <code>querySelectorAll</code>/<code>matches</code>, including
+          <code>:has()</code>. Rules with URL regexes are skipped immediately
+          when the URL does not match. Open shadow DOM is not traversed.
         </p>
       </footer>
     </main>
@@ -104,25 +108,13 @@
             <span class="err" data-err="urlRegex"></span>
           </label>
 
-          <label class="field">
-            <span class="label">Element selector</span>
-            <input type="text" data-field="selector" placeholder="div" spellcheck="false" autocomplete="off" />
+          <label class="field span-2">
+            <span class="label">CSS selector <span class="hint">full selector; :has() and attribute selectors work</span></span>
+            <input type="text" data-field="selector" placeholder='section[data-test-id^="novation"]' spellcheck="false" autocomplete="off" />
             <span class="err" data-err="selector"></span>
           </label>
 
-          <label class="field">
-            <span class="label">Attribute key <span class="hint">exact</span></span>
-            <input type="text" data-field="attr" placeholder="data-test-id" spellcheck="false" autocomplete="off" />
-            <span class="err" data-err="attr"></span>
-          </label>
-
-          <label class="field">
-            <span class="label">Attribute value regex <span class="hint">empty = any value</span></span>
-            <input type="text" data-field="valueRegex" placeholder="novation.*" spellcheck="false" autocomplete="off" />
-            <span class="err" data-err="valueRegex"></span>
-          </label>
-
-          <label class="field">
+          <label class="field span-2">
             <span class="label">Action</span>
             <select data-field="action">
               <option value="remove">Remove from DOM</option>
@@ -135,7 +127,7 @@
         <div class="rule-foot">
           <label class="check">
             <input type="checkbox" data-field="ignoreCase" />
-            <span>Ignore case in both regexes</span>
+            <span>Ignore case in the URL regex</span>
           </label>
           <span class="rule-id" data-role="id"></span>
         </div>
