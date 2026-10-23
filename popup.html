@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Div Hider — status</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="head">
+      <img src="icons/icon48.png" alt="" width="32" height="32" />
+      <div class="head-text">
+        <strong>Div Hider</strong>
+        <span id="host" class="host">—</span>
+      </div>
+      <span id="state-dot" class="dot" aria-hidden="true"></span>
+    </header>
+
+    <section class="status" aria-label="Status for this tab">
+      <div class="row">
+        <span>Saved rules for this host</span>
+        <strong id="saved">—</strong>
+      </div>
+      <div class="row">
+        <span>Registered for page loads</span>
+        <strong id="registered">—</strong>
+      </div>
+      <div class="row">
+        <span>Content script</span>
+        <strong id="running">—</strong>
+      </div>
+      <div class="row">
+        <span>Active rules for this URL</span>
+        <strong id="active">—</strong>
+      </div>
+      <div class="row">
+        <span>Matching elements right now</span>
+        <strong id="matches">—</strong>
+      </div>
+    </section>
+
+    <p id="hint" class="hint">Checking this tab…</p>
+
+    <div class="actions">
+      <button type="button" id="rescan" class="btn" hidden>Rescan now</button>
+      <button type="button" id="grant" class="btn primary" hidden>Grant site access</button>
+      <button type="button" id="apply" class="btn primary" hidden>Apply to this tab</button>
+      <button type="button" id="options" class="btn link">Edit rules…</button>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

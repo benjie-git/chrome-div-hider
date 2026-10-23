@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Div Hider — rules</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="hero">
+        <div class="brand">
+          <img src="icons/icon48.png" alt="" width="40" height="40" />
+          <div>
+            <h1>Div Hider</h1>
+            <p>
+              Remove or hide elements by <strong>exact attribute name</strong> and
+              <strong>regex value</strong>, on the sites you choose.
+            </p>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="btn ghost" id="add-rule">Add rule</button>
+          <button type="button" class="btn primary" id="save" disabled>Save changes</button>
+        </div>
+      </header>
+
+      <div class="notice" id="notice" hidden>
+        <span class="notice-dot"></span>
+        <span id="notice-text">Unsaved changes. Save to apply.</span>
+      </div>
+
+      <section id="rules" class="rules" aria-label="Rules"></section>
+
+      <section id="empty" class="empty" hidden>
+        <h2>No rules yet</h2>
+        <p>
+          A rule needs a host, an exact attribute key, and a regex for the
+          attribute value. For example: on <code>mail.yahoo.com</code>, remove any
+          element matching <code>section</code> whose <code>data-test-id</code>
+          matches <code>novation.*</code>. Yahoo's current markup uses a
+          <code>section</code>; change the selector if yours differs.
+        </p>
+        <button type="button" class="btn primary" id="add-example">Add that example rule</button>
+      </section>
+
+      <details class="io">
+        <summary>Import / export</summary>
+        <p class="io-help">
+          Rules are stored locally in Chrome. Copy this JSON to back them up, or
+          paste a JSON array and replace the current rules.
+        </p>
+        <textarea id="io-text" rows="8" spellcheck="false" placeholder='[{"host":"mail.yahoo.com","selector":"section","attr":"data-test-id","valueRegex":"novation.*"}]'></textarea>
+        <div class="io-actions">
+          <button type="button" class="btn ghost" id="export">Show JSON</button>
+          <button type="button" class="btn ghost" id="import">Replace rules from JSON</button>
+        </div>
+      </details>
+
+      <footer class="footnote">
+        <p>
+          Div Hider only injects its content script into hosts that have an
+          enabled rule and site access. Chrome asks for access to each host the
+          first time you save a rule for it; the toolbar icon stays disabled on
+          other sites. Rules with URL regexes are also skipped immediately when
+          the URL does not match. Open shadow DOM is not traversed.
+        </p>
+      </footer>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <template id="rule-template">
+      <article class="rule">
+        <div class="rule-top">
+          <label class="switch">
+            <input type="checkbox" data-field="enabled" />
+            <span class="switch-track" aria-hidden="true"></span>
+            <span class="switch-label">Enabled</span>
+          </label>
+          <span class="pill" data-role="pill">no host</span>
+          <span class="access" data-role="access" hidden>
+            <span class="access-dot" aria-hidden="true"></span>
+            <span data-role="access-text">Site access needed</span>
+            <button type="button" class="link-btn" data-action="grant">Grant</button>
+          </span>
+          <button type="button" class="icon-btn" data-action="delete" title="Delete rule" aria-label="Delete rule">
+            <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+              <path d="M6 6l8 8M14 6l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="fields">
+          <label class="field span-2">
+            <span class="label">Host <span class="hint">exact hostname or *.example.com</span></span>
+            <input type="text" data-field="host" placeholder="mail.yahoo.com" spellcheck="false" autocomplete="off" />
+            <span class="err" data-err="host"></span>
+          </label>
+
+          <label class="field span-2">
+            <span class="label">URL regex <span class="hint">optional, tested against the full URL</span></span>
+            <input type="text" data-field="urlRegex" placeholder="^https://mail\.yahoo\.com/" spellcheck="false" autocomplete="off" />
+            <span class="err" data-err="urlRegex"></span>
+          </label>
+
+          <label class="field">
+            <span class="label">Element selector</span>
+            <input type="text" data-field="selector" placeholder="div" spellcheck="false" autocomplete="off" />
+            <span class="err" data-err="selector"></span>
+          </label>
+
+          <label class="field">
+            <span class="label">Attribute key <span class="hint">exact</span></span>
+            <input type="text" data-field="attr" placeholder="data-test-id" spellcheck="false" autocomplete="off" />
+            <span class="err" data-err="attr"></span>
+          </label>
+
+          <label class="field">
+            <span class="label">Attribute value regex <span class="hint">empty = any value</span></span>
+            <input type="text" data-field="valueRegex" placeholder="novation.*" spellcheck="false" autocomplete="off" />
+            <span class="err" data-err="valueRegex"></span>
+          </label>
+
+          <label class="field">
+            <span class="label">Action</span>
+            <select data-field="action">
+              <option value="remove">Remove from DOM</option>
+              <option value="hide">Hide (display: none)</option>
+            </select>
+            <span class="err" data-err="action"></span>
+          </label>
+        </div>
+
+        <div class="rule-foot">
+          <label class="check">
+            <input type="checkbox" data-field="ignoreCase" />
+            <span>Ignore case in both regexes</span>
+          </label>
+          <span class="rule-id" data-role="id"></span>
+        </div>
+      </article>
+    </template>
+
+    <script src="options.js"></script>
+  </body>
+</html>

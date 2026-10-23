@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Div Hider",
+  "version": "1.2.0",
+  "description": "Remove or hide elements by exact attribute name and regex value, scoped to the sites you choose.",
+  "minimum_chrome_version": "119",
+  "permissions": ["storage", "scripting", "activeTab", "declarativeContent"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Div Hider",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
